@@ -11,6 +11,7 @@ import oracle_db
 import MySQL_db
 import json
 import threading
+import time
 
 
 qtDialogFile = "ShowDialog.ui"
@@ -22,6 +23,8 @@ DBType = 0
 GTable = ''
 GColName =''
 Fconnet = False
+CheckFlag = False
+Frun = True
 
 def cur_file_dir():
      path = sys.path[0]
@@ -327,8 +330,25 @@ def DeleteRule(section,TableRule,LabMess):
 # 创建全局ThreadLocal对象:
 local_DbLink = threading.local()
 
+def ThreadStart(section,TableRule,LabMess,nRecord):
+    if nRecord == '':
+        Show(LabMess,'请输入每次更新的记录条数',True)
+        return
+    if nRecord == '0':
+        Show(LabMess,'每次更新的记录条数必须大于0',True)
+        return
+    global Fthread
+    Fthread = threading.Thread(target=TransStart,args=(section,TableRule,LabMess,nRecord,))
+    Fthread.start()
 
-def TransStart(section,TableRule,LabMess):
+
+def ThreadStop():
+    global Frun
+    Frun = False
+    Fthread.join()
+
+
+def TransStart(section,TableRule,LabMess,nRecord):
     Ip        = config.get(str(section), "IP")
     dbName  = config.get(str(section), 'DateBase')
     user      = config.get(str(section), 'User')
@@ -355,58 +375,71 @@ def TransStart(section,TableRule,LabMess):
     except:
         Show(LabMess,'查询失败，',True)
 
-    if len(Dinfo) > 0:
-        for i in range(len(Dinfo)):
-            sIp        = Dinfo[i]['IP']
-            sdbName  = Dinfo[i]['DBNAME']
-            suser      = Dinfo[i]['DBUSER']
-            spw     = Dinfo[i]['PASSWORD']
-            sDBType    = Dinfo[i]['DBTYPE']
-            stable     = Dinfo[i]['TABLENAME']
-            stable_Tag     = Dinfo[i]['TABLENAME_TAG']
-            sCols      = Dinfo[i]['COLNAME']
-            sUpValue      = Dinfo[i]['UPVALUE']
-            supsql     = Dinfo[i]['UPSQL']
-            ssql     = Dinfo[i]['SQL']
-            ssql_tag     = Dinfo[i]['SQL_TAG']
-            nSleeptime     = Dinfo[i]['SLEEPTIME']
-            sKeyCol     = Dinfo[i]['KEYCOL']
 
-            if DBType == '2':
-                ssql_select = 'select ' + ssql + ' from ' + stable + ' where '+ sCols +' <> ' + sUpValue  \
-                              + ' order by ' + sKeyCol + ' limit 30 '
+    while Frun==True:
+
+        if len(Dinfo) > 0:
+            for i in range(len(Dinfo)):
+
+                sIp        = Dinfo[i]['IP']
+                sdbName  = Dinfo[i]['DBNAME']
+                suser      = Dinfo[i]['DBUSER']
+                spw     = Dinfo[i]['PASSWORD']
+                sDBType    = Dinfo[i]['DBTYPE']
+                stable     = Dinfo[i]['TABLENAME']
+                stable_Tag     = Dinfo[i]['TABLENAME_TAG']
+                sCols      = Dinfo[i]['COLNAME']
+                sUpValue      = Dinfo[i]['UPVALUE']
+                supsql     = Dinfo[i]['UPSQL']
+                ssql     = Dinfo[i]['SQL']
+                ssql_tag     = Dinfo[i]['SQL_TAG']
+                nSleeptime     = Dinfo[i]['SLEEPTIME']
+                sKeyCol     = Dinfo[i]['KEYCOL']
+                sAutoCol   = Dinfo[i]['AUTOCOL']
+                sSeq       =Dinfo[i]['SEQ']
+                sSpecialCol = Dinfo[i]['SPECIALCOL']
+                sSpecialRule = Dinfo[i]['SPECIALRULE']
+
+                if DBType == '2':
+                    ssql_select = 'select ' + ssql + ' from ' + stable + ' where '+ sCols +' <> ' + sUpValue  \
+                                  + ' order by ' + sKeyCol + ' limit ' + str(nRecord)
 
 
-            if DBType == '1':
-                ssql_select = 'select ' + ssql + ' from ' + stable + ' where nvl('+ sCols +',0) <> ' + sUpValue + ' and rownum < 31 ' \
-                           + ' order by ' + sKeyCol
+                if DBType == '1':
+                    ssql_select = 'select ' + ssql + ' from ' + stable + ' where nvl('+ sCols +',0) <> ' + sUpValue + ' and rownum < ' +str(nRecord +1) \
+                               + ' order by ' + sKeyCol
 
-            if DBType == '0':
-                ssql_select = 'select top 30 ' + ssql + ' from ' + stable + ' where ISNULL('+ sCols +',0) <> ' + sUpValue  \
-                           + ' order by ' + sKeyCol
+                if DBType == '0':
+                    ssql_select = 'select top '+ str(nRecord) + ' ' + ssql + ' from ' + stable + ' where ISNULL('+ sCols +',0) <> ' + sUpValue  \
+                               + ' order by ' + sKeyCol
 
-            if sDBType == '2':
-                ComDbIntf_Tag = MySQL_db
+                if sDBType == '2':
+                    ComDbIntf_Tag = MySQL_db
 
-            if sDBType == '1':
-                ComDbIntf_Tag = oracle_db
+                if sDBType == '1':
+                    ComDbIntf_Tag = oracle_db
 
-            if sDBType == '0':
-                ComDbIntf_Tag = DbIntf
-            try:
-                ComDbIntf_Tag.engine = None
-                ComDbIntf_Tag.create_engine(user=str(suser), password=str(spw), database=str(sdbName), host=str(sIp))
-                t1 = threading.Thread(target=TransThread,args=(ComDbIntf,ComDbIntf_Tag,ssql_select,stable_Tag,ssql_tag,supsql,sKeyCol,nSleeptime,sDBType,LabMess,))
-                threads.append(t1)
+                if sDBType == '0':
+                    ComDbIntf_Tag = DbIntf
+                try:
+                    ComDbIntf_Tag.engine = None
+                    ComDbIntf_Tag.create_engine(user=str(suser), password=str(spw), database=str(sdbName), host=str(sIp))
+                    # t1 = threading.Thread(target=TransThread,args=(ComDbIntf,ComDbIntf_Tag,ssql_select,stable_Tag,ssql_tag,supsql,sKeyCol,nSleeptime,sDBType,
+                    #                                                sAutoCol,sSeq,sSpecialCol,sSpecialRule,LabMess,))
+                    # t1.start()
+                    # threads.append(t1)
+                    TransThread(ComDbIntf,ComDbIntf_Tag,ssql_select,stable_Tag,ssql_tag,supsql,sKeyCol,nSleeptime,sDBType,
+                                                                   sAutoCol,sSeq,sSpecialCol,sSpecialRule,LabMess)
 
-            except:
-                Show(LabMess,'目标数据库连接失败，',True)
+                    Show(LabMess,'等待'+str(nSleeptime)+'秒',True)
+                    time.sleep(int(nSleeptime))
 
-    for th in threads:
-        th.start()
-        th.join()
+                except:
+                    Show(LabMess,'目标数据库连接失败，',True)
 
-def TransThread(ComDbIntf,ComDbIntf_Tag,sql_select,table_tag,sql_tag,upsql,keycol,sleeptime,DBType_Tag,LabMess):
+
+
+def TransThread(ComDbIntf,ComDbIntf_Tag,sql_select,table_tag,sql_tag,upsql,keycol,sleeptime,DBType_Tag,autoCol,seq,SpecialCol,SpecialRule,LabMess):
     local_DbLink.Db = ComDbIntf
     local_DbLink.DbTag = ComDbIntf_Tag
     local_DbLink.sql_select = sql_select
@@ -416,75 +449,278 @@ def TransThread(ComDbIntf,ComDbIntf_Tag,sql_select,table_tag,sql_tag,upsql,keyco
     local_DbLink.keycol = keycol
     local_DbLink.sleeptime = sleeptime
     local_DbLink.DBType_Tag = DBType_Tag
+    local_DbLink.autoCol =autoCol
+    local_DbLink.seq = seq
+    local_DbLink.SpecialCol = SpecialCol
+    local_DbLink.SpecialRule = SpecialRule
+    local_DbLink.LabMess = LabMess
+
+
+    # @local_DbLink.DbTag.with_transaction
+    # def TsRuleUpdate(SpecialRule):
+    #     listA = SpecialRule.split(';')
+    #     #特殊规则
+    #     try:
+    #         for n in range(len(listA)):
+    #             ssql = listA[n].lower()
+    #             if ssql.find('select')>-1:
+    #                 sSelect = local_DbLink.DbTag.select(str(ssql))
+    #             if ssql.find('update')>-1:
+    #                 sUpdate = local_DbLink.DbTag.update(str(ssql))
+    #         return sSelect
+    #     except Exception,ex:
+    #         Show(LabMess,'特殊列规则有误，',True)
+
+    # while 1==1:
 
     Dinfo1 = local_DbLink.Db.select(local_DbLink.sql_select)
-
-    if len(Dinfo1) > 1 :
+    if len(Dinfo1) > 0 :
         for i in range(len(Dinfo1)):
             #获取关键字段
             sID = Dinfo1[i][local_DbLink.keycol]
             #完成更新语句
-            local_DbLink.upsql = local_DbLink.upsql + ' where ' + local_DbLink.keycol + ' = ' + str(sID)
+            local_DbLink.upsqlTemp = local_DbLink.upsql + ' where ' + local_DbLink.keycol + ' = ' + str(sID)
             #同步到目标数据库
             sInsertValues =''
 
             if local_DbLink.DBType_Tag == '2':
                 list = str(local_DbLink.sql_tag).split(',')
                 sValues  = Dinfo1[i]
+                #自增列存在
+                if (local_DbLink.autoCol<>None) or (local_DbLink.autoCol<>''):
+                    list.remove(local_DbLink.autoCol)
+                    sValues.pop(local_DbLink.autoCol)
 
-                for n in range(len(list)):
-                    strs = list[n]
-                    if isinstance(sValues[strs],basestring):
-                        name = sValues[strs].decode('gbk')
-                    else:
-                        name = sValues[strs]
-                    sValues[strs] = name
 
-                try:
-                    info =  local_DbLink.DbTag.insert(str(local_DbLink.table_tag),**sValues)
-                    if info == 1:
-                        Show(LabMess,'同步到表:'+str(local_DbLink.table_tag)+'成功,关键字段:'+str(local_DbLink.keycol)+
+
+                #特殊列规则存在
+                with local_DbLink.DbTag.transaction():
+                    if (local_DbLink.SpecialRule<>None) or (local_DbLink.SpecialRule<>''):
+                        listA = local_DbLink.SpecialRule.split(';')
+                        #特殊规则
+                        try:
+                            for n in range(len(listA)):
+                                ssql = listA[n].lower()
+                                if ssql.find('select')>-1:
+                                    sSelect = local_DbLink.DbTag.select(str(ssql))
+                                if ssql.find('update')>-1:
+                                    sUpdate = local_DbLink.DbTag.update(str(ssql))
+                        except Exception,ex:
+                            Show(local_DbLink.LabMess,'特殊列规则有误，',True)
+
+                    key = sSelect[0].keys()[0]
+                    sValue = sSelect[0][key]
+
+                    for n in range(len(list)):
+                        strs = list[n]
+
+                        if strs == local_DbLink.SpecialCol:
+                            sValues[strs] = sValue
+
+                        if isinstance(sValues[strs],basestring):
+                            if local_DbLink.DBType_Tag == '1':
+                                value = sValues[strs]
+                            else:
+                                value = sValues[strs].decode('gbk')
+                        else:
+                            value = sValues[strs]
+                        sValues[strs] = value
+
+                    try:
+                        info =  local_DbLink.DbTag.insert(str(local_DbLink.table_tag),**sValues)
+                        if info == 1:
+                            info =  local_DbLink.Db.update(str(local_DbLink.upsqlTemp))
+                            if info == 1:
+                                local_DbLink.DbTag.select('select 1')
+                                Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'成功,关键字段:'+str(local_DbLink.keycol)+
+                                     ' ='+str(sID),True)
+                            else:
+                                Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'失败,关键字段:'+str(local_DbLink.keycol)+
+                                     ' ='+str(sID),True)
+                        else:
+                            Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'失败,关键字段:'+str(local_DbLink.keycol)+
+                                 ' ='+str(sID),True)
+                    except Exception,ex:
+                        Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'失败,关键字段:'+str(local_DbLink.keycol)+
                              ' ='+str(sID),True)
-                    else:
-                        pass
-                        # Show(LabMess,'添加失败。',True)
-                except Exception,ex:
-                    pass
-                    # Show(LabMess,'添加失败，',True)
 
 
             if local_DbLink.DBType_Tag == '1':
-                pass
+                list = str(local_DbLink.sql_tag).split(',')
+                sValues  = Dinfo1[i]
 
+                #特殊列规则存在
+                with local_DbLink.DbTag.transaction():
+                    if len(local_DbLink.SpecialRule) > 1:
+                        listA = local_DbLink.SpecialRule.split(';')
+                        #特殊规则
+                        try:
+                            for n in range(len(listA)):
+                                ssql = listA[n].lower()
+                                if ssql.find('select')>-1:
+                                    sSelect = local_DbLink.DbTag.select(str(ssql))
+                                if ssql.find('update')>-1:
+                                    sUpdate = local_DbLink.DbTag.update(str(ssql))
+                        except Exception,ex:
+                            Show(local_DbLink.LabMess,'特殊列规则有误，',True)
 
+                        key = sSelect[0].keys()[0]
+                        sValue = sSelect[0][key]
 
-                # sSQL = "insert into Trans_Rule (Ip,dbName,dbuser,passWord,DBType,SleepTime,UPSQL,tableName,SQL,tableName_Tag,SQL_Tag,KeyCol,ColName,UPvalue) " \
-                #        "values('"+str(Ip)+"','"+ str(dbName) +"','"+ str(user) + "','"\
-                #    + str(pw) +"','"+ str(DBType) +"','"+ str(sleeptime) +"','"+ str(updateSQL).upper() +"','"+ str(sTable) +"','"\
-                #    + str(SQL).upper() +"','"+ str(sTable_Tag) +"','"+ str(SQL_Tag).upper() +"','"\
-                #    + str(KeyCol).upper() +"','"+ str(ColName).upper() +"','"+ str(UPvalue) +"')"
-                # try:
-                #     info =  oracle_db.update(sSQL)
-                #     if info == 1:
-                #         Show(LabMess,'添加成功。',True)
-                #         sSQL = 'select ip,dbname,dbuser,passWord,DBType,SleepTime,UPSQL,tableName,KeyCol,ColName,UPvalue from Trans_Rule'
-                #         Dinfo = oracle_db.select(sSQL)
-                #
-                #         ConToTable(Dinfo,TableRule)
-                #     else:
-                #         Show(LabMess,'添加失败。',True)
-                # except Exception,ex:
-                #     Show(LabMess,'添加失败，',True)
+                    for n in range(len(list)):
+                        strs = list[n]
+
+                        if strs == local_DbLink.autoCol:
+                            sql_seq = 'select '+ local_DbLink.seq + '.nextval as SEQ from dual '
+                            Seq = local_DbLink.DbTag.select(sql_seq)
+                            if len(seq) > 0:
+                                sValues[strs] = Seq[0]['SEQ']
+
+                        if strs == local_DbLink.SpecialCol:
+                            sValues[strs] = sValue
+
+                        if isinstance(sValues[strs],basestring):
+                            value = sValues[strs]
+                        else:
+                            value = sValues[strs]
+                        sValues[strs] = value
+
+                    try:
+                        info =  local_DbLink.DbTag.insert(str(local_DbLink.table_tag),**sValues)
+                        if info == 1:
+                            info =  local_DbLink.Db.update(str(local_DbLink.upsqlTemp))
+                            if info == 1:
+                                local_DbLink.DbTag.select('select 1 from dual')
+                                Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'成功,关键字段:'+str(local_DbLink.keycol)+
+                                     ' ='+str(sID),True)
+                            else:
+                                Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'失败,关键字段:'+str(local_DbLink.keycol)+
+                                     ' ='+str(sID),True)
+                        else:
+                            Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'失败,关键字段:'+str(local_DbLink.keycol)+
+                                 ' ='+str(sID),True)
+                    except Exception,ex:
+                        Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'失败,关键字段:'+str(local_DbLink.keycol)+
+                             ' ='+str(sID),True)
+
 
             if local_DbLink.DBType_Tag == '0':
-                sSQL_Insert = ''
+                list = str(local_DbLink.sql_tag).split(',')
+                sValues  = Dinfo1[i]
+                #自增列存在
+                if (local_DbLink.autoCol<>None) or (local_DbLink.autoCol<>''):
+                    list.remove(local_DbLink.autoCol)
+                    sValues.pop(local_DbLink.autoCol)
 
 
 
-    # sSQL = 'select * from Trans_Rule'
-    # Dinfo2 = local_DbLink.DbTag.select(sSQL)
+                #特殊列规则存在
+                with local_DbLink.DbTag.transaction():
+                    if (local_DbLink.SpecialRule<>None) or (local_DbLink.SpecialRule<>''):
+                        listA = local_DbLink.SpecialRule.split(';')
+                        #特殊规则
+                        try:
+                            for n in range(len(listA)):
+                                ssql = listA[n].lower()
+                                if ssql.find('select')>-1:
+                                    sSelect = local_DbLink.DbTag.select(str(ssql))
+                                if ssql.find('update')>-1:
+                                    sUpdate = local_DbLink.DbTag.update(str(ssql))
+                        except Exception,ex:
+                            Show(local_DbLink.LabMess,'特殊列规则有误，',True)
+
+                    key = sSelect[0].keys()[0]
+                    sValue = sSelect[0][key]
+
+                    for n in range(len(list)):
+                        strs = list[n]
+
+                        if strs == local_DbLink.SpecialCol:
+                            sValues[strs] = sValue
+
+                        if isinstance(sValues[strs],basestring):
+                            value = sValues[strs]
+                        else:
+                            value = sValues[strs]
+                        sValues[strs] = value
+
+                    try:
+                        info =  local_DbLink.DbTag.insert(str(local_DbLink.table_tag),**sValues)
+                        if info == 1:
+                            info =  local_DbLink.Db.update(str(local_DbLink.upsqlTemp))
+                            if info == 1:
+                                local_DbLink.DbTag.select('select 1')
+                                Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'成功,关键字段:'+str(local_DbLink.keycol)+
+                                     ' ='+str(sID),True)
+                            else:
+                                Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'失败,关键字段:'+str(local_DbLink.keycol)+
+                                     ' ='+str(sID),True)
+                        else:
+                            Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'失败,关键字段:'+str(local_DbLink.keycol)+
+                                 ' ='+str(sID),True)
+                    except Exception,ex:
+                        Show(local_DbLink.LabMess,'同步到表:'+str(local_DbLink.table_tag)+'失败,关键字段:'+str(local_DbLink.keycol)+
+                             ' ='+str(sID),True)
+
+def CheckTsRule(section,SpecialRule,LabMess):
+    global CheckFlag
+    CheckFlag = False
+    Ip        = config.get(str(section), "IP")
+    dbName  = config.get(str(section), 'DateBase')
+    user      = config.get(str(section), 'User')
+    pw     = config.get(str(section), 'Paswd')
+    sDBType    = config.get(str(section), 'DBType')
+
+    list = str(SpecialRule).split(';')
 
 
+    if sDBType == '2':
+        MySQL_db.engine = None
+        MySQL_db.create_engine(user=str(user), password=str(pw), database=str(dbName), host=str(Ip))
+        #特殊规则验证
+        try:
+            for n in range(len(list)):
+                ssql = list[n].lower()
+                if ssql.find('select')>-1:
+                    sSelect = MySQL_db.select(str(ssql))
+                if ssql.find('update')>-1:
+                    sUpdate = MySQL_db.update(str(ssql))
+            CheckFlag = True
+            Show(LabMess,'特殊列规则验证成功，',True)
+        except Exception,ex:
+            Show(LabMess,'特殊列规则验证有误，',True)
+
+    if sDBType == '1':
+        oracle_db.engine = None
+        oracle_db.create_engine(user=str(user), password=str(pw), database=str(dbName), host=str(Ip))
+        #特殊规则验证
+        try:
+            for n in range(len(list)):
+                ssql = list[n].lower()
+                if ssql.find('select')>-1:
+                    sSelect = oracle_db.select(str(ssql))
+                if ssql.find('update')>-1:
+                    sUpdate = oracle_db.update(str(ssql))
+            CheckFlag = True
+            Show(LabMess,'特殊列规则验证成功，',True)
+        except Exception,ex:
+            Show(LabMess,'特殊列规则验证有误，',True)
+
+    if sDBType == '0':
+        DbIntf.engine = None
+        DbIntf.create_engine(user=str(user), password=str(pw), database=str(dbName), host=str(Ip))
+        #特殊规则验证
+        try:
+            for n in range(len(list)):
+                ssql = list[n].lower()
+                if ssql.find('select')>-1:
+                    sSelect = DbIntf.select(str(ssql))
+                if ssql.find('update')>-1:
+                    sUpdate = DbIntf.update(str(ssql))
+            CheckFlag = True
+            Show(LabMess,'特殊列规则验证成功，',True)
+        except Exception,ex:
+            Show(LabMess,'特殊列规则验证有误，',True)
 
 def AddRule(section,LabMess,sleeptime,updateSQL,sTable,SQL,sTable_Tag,SQL_Tag,KeyCol,ColName,UPvalue,TableRule,autoCol,seq,SpecialCol,SpecialRule):
     from collections import Counter
@@ -495,13 +731,24 @@ def AddRule(section,LabMess,sleeptime,updateSQL,sTable,SQL,sTable_Tag,SQL_Tag,Ke
         return 0
     if SQL == '':
         Show(LabMess,'没有获取字段',True)
+        return 0
     if SQL_Tag == '':
         Show(LabMess,'没有获取目标字段',True)
+        return 0
     if sTable == '':
         Show(LabMess,'没有输入表名',True)
+        return 0
     if sTable_Tag == '':
         Show(LabMess,'没有输入目标表名',True)
         return 0
+    if SpecialCol <> '':
+        if SpecialRule =='':
+            Show(LabMess,'输入了特殊字段,但没有输入对应的规则!')
+            return 0
+        if CheckFlag <> True:
+            Show(LabMess,'请先验证规则!',True)
+            return 0
+
     # if SQL.find(ColName) < 0:
     #     Show('更新关键字'+str(ColName)+'不在字段中!')
     if str(SQL).find(str(KeyCol).upper()) < 0:

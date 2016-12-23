@@ -145,9 +145,10 @@ class MyApp(QtGui.QMainWindow, Ui_MainWindow):
 
         self.btn_ChangeCols.clicked.connect(lambda :UF.ChangeCols(self.ET_ColName,self.ET_ColName_Tag,self.ET_operatorText))
 
-        self.btn_TransStart.clicked.connect(lambda :UF.TransStart('conn',self.TableRule,self.ET_operatorText))
-
-
+        self.btn_TransStart.clicked.connect(lambda :UF.ThreadStart('conn',self.TableRule,self.ET_operatorText,self.ET_nRecrod.text()))
+        self.btn_TransStop.clicked.connect(lambda :UF.ThreadStop())
+        #验证
+        self.btn_Check.clicked.connect(lambda: UF.CheckTsRule(self.cbbDbInfoList.currentText(),self.ET_SpecialRule.toPlainText(),self.ET_operatorText))
 
 
         def clear():
@@ -156,7 +157,6 @@ class MyApp(QtGui.QMainWindow, Ui_MainWindow):
             window.ET_showUpdate.setText('')
             UF.GTable = ''
             UF.GColName = ''
-
 
         def showinfo(self):
             re = UF.WriteConfig('conn',self.ET_ip.text(),self.ET_DbName.text(),self.ET_User.text(),
